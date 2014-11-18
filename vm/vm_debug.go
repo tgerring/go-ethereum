@@ -41,53 +41,60 @@ func NewDebugVm(env Environment) *DebugVm {
 func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 	self.depth++
 
-	var (
-		op OpCode
-
-		mem      = &Memory{}
-		stack    = NewStack()
-		pc       = big.NewInt(0)
-		step     = 0
-		prevStep = 0
-		statedb  = self.env.State()
-		require  = func(m int) {
-			if stack.Len() < m {
-				panic(fmt.Sprintf("%04v (%v) stack err size = %d, required = %d", pc, op, stack.Len(), m))
-			}
-		}
-
-		jump = func(pos *big.Int) {
-			p := int(pos.Int64())
-
-			self.Printf(" ~> %v", pos)
-			// Return to start
-			if p == 0 {
-				pc = big.NewInt(0)
-			} else {
-				nop := OpCode(closure.GetOp(p - 1))
-				if nop != JUMPDEST {
-					panic(fmt.Sprintf("JUMP missed JUMPDEST (%v) %v", nop, p))
-				}
-
-				pc = pos
-			}
-
-			self.Endl()
-		}
-	)
-
 	if self.Recoverable {
 		// Recover from any require exception
 		defer func() {
 			if r := recover(); r != nil {
 				self.Endl()
 
+				closure.UseGas(closure.Gas)
+
 				ret = closure.Return(nil)
-				// No error should be set. Recover is used with require
-				// Is this too error prone?
+
+				err = fmt.Errorf("%v", r)
+
 			}
 		}()
 	}
+
+	var (
+		op OpCode
+
+		destinations = analyseJumpDests(closure.Code)
+		mem          = NewMemory()
+		stack        = NewStack()
+		pc           = big.NewInt(0)
+		step         = 0
+		prevStep     = 0
+		statedb      = self.env.State()
+		require      = func(m int) {
+			if stack.Len() < m {
+				panic(fmt.Sprintf("%04v (%v) stack err size = %d, required = %d", pc, op, stack.Len(), m))
+			}
+		}
+
+		jump = func(from, to *big.Int) {
+			p := int(to.Int64())
+
+			self.Printf(" ~> %v", to)
+			// Return to start
+			if p == 0 {
+				pc = big.NewInt(0)
+			} else {
+				nop := OpCode(closure.GetOp(p))
+				if !(nop == JUMPDEST || destinations[from.Int64()] != nil) {
+					panic(fmt.Sprintf("JUMP missed JUMPDEST (%v) %v", nop, p))
+				} else if nop == JUMP || nop == JUMPI {
+					panic(fmt.Sprintf("not allowed to JUMP(I) in to JUMP"))
+				}
+
+				pc = to
+
+			}
+
+			self.Endl()
+		}
+	)
 
 	// Debug hook
 	if self.Dbg != nil {
@@ -254,11 +261,14 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 				memGasUsage.Div(memGasUsage, u256(32))
 
 				addStepGasUsage(memGasUsage)
+
+				mem.Resize(newMemSize.Uint64())
 			}
+
 		}
 
 		self.Printf("(pc) %-3d -o- %-14s", pc, op.String())
-		self.Printf(" (g) %-3v (%v)", gas, closure.Gas)
+		self.Printf(" (m) %-4d (s) %-4d (g) %-3v (%v)", mem.Len(), stack.Len(), gas, closure.Gas)
 
 		if !closure.UseGas(gas) {
 			self.Endl()
@@ -269,8 +279,6 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 
 			return closure.Return(nil), OOG(gas, tmp)
 		}
-
-		mem.Resize(newMemSize.Uint64())
 
 		switch op {
 		// 0x20 range
@@ -404,6 +412,11 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 				} else {
 					num.And(num, mask)
 				}
+
+				num = U256(num)
+
+				self.Printf(" = %v", num)
+
 				stack.Push(num)
 			}
 		case NOT:
@@ -608,6 +621,8 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 			code := closure.Args[cOff : cOff+l]
 
 			mem.Set(mOff, l, code)
+
+			self.Printf(" => [%v, %v, %v] %x", mOff, cOff, l, code[cOff:cOff+l])
 		case CODESIZE, EXTCODESIZE:
 			var code []byte
 			if op == EXTCODESIZE {
@@ -649,6 +664,8 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 			codeCopy := code[cOff : cOff+l]
 
 			mem.Set(mOff, l, codeCopy)
+
+			self.Printf(" => [%v, %v, %v] %x", mOff, cOff, l, code[cOff:cOff+l])
 		case GASPRICE:
 			stack.Push(closure.Price)
 
@@ -720,12 +737,16 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 		case LOG0, LOG1, LOG2, LOG3, LOG4:
 			n := int(op - LOG0)
 			topics := make([][]byte, n)
-			mSize, mStart := stack.Pop().Int64(), stack.Pop().Int64()
+			mStart, mSize := stack.Pop().Int64(), stack.Pop().Int64()
 			data := mem.Geti(mStart, mSize)
 			for i := 0; i < n; i++ {
 				topics[i] = stack.Pop().Bytes()
 			}
-			self.env.AddLog(state.Log{closure.Address(), topics, data})
+
+			log := &state.Log{closure.Address(), topics, data}
+			self.env.AddLog(log)
+
+			self.Printf(" => %v", log)
 		case MLOAD:
 			offset := stack.Pop()
 			val := ethutil.BigD(mem.Get(offset.Int64(), 32))
@@ -763,14 +784,14 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 			self.Printf(" {0x%x : 0x%x}", loc.Bytes(), val.Bytes())
 		case JUMP:
 
-			jump(stack.Pop())
+			jump(pc, stack.Pop())
 
 			continue
 		case JUMPI:
 			cond, pos := stack.Popn()
 
 			if cond.Cmp(ethutil.BigTrue) >= 0 {
-				jump(pos)
+				jump(pc, pos)
 
 				continue
 			}
@@ -784,7 +805,6 @@ func (self *DebugVm) RunClosure(closure *Closure) (ret []byte, err error) {
 			stack.Push(closure.Gas)
 			// 0x60 range
 		case CREATE:
-
 			var (
 				err          error
 				value        = stack.Pop()

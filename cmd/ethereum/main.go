@@ -21,8 +21,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-
-	"github.com/ethereum/go-ethereum/chain"
+	"github.com/ethereum/go-ethereum/chain/types"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/ethutil"
 	"github.com/ethereum/go-ethereum/logger"
@@ -30,7 +29,7 @@ import (
 
 const (
 	ClientIdentifier = "Ethereum(G)"
-	Version          = "0.7.3"
+	Version          = "0.7.5"
 )
 
 var clilogger = logger.NewLogger("CLI")
@@ -74,7 +73,7 @@ func main() {
 	ethereum := utils.NewEthereum(db, clientIdentity, keyManager, UseUPnP, OutboundPort, MaxPeer)
 
 	if Dump {
-		var block *chain.Block
+		var block *types.Block
 
 		if len(DumpHash) == 0 && DumpNumber == -1 {
 			block = ethereum.ChainManager().CurrentBlock
@@ -93,7 +92,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		fmt.Printf("RLP: %x\nstate: %x\nhash: %x\n", ethutil.Rlp(block), block.GetRoot(), block.Hash())
+		// block.GetRoot() does not exist
+		//fmt.Printf("RLP: %x\nstate: %x\nhash: %x\n", ethutil.Rlp(block), block.GetRoot(), block.Hash())
 
 		// Leave the Println. This needs clean output for piping
 		fmt.Printf("%s\n", block.State().Dump())

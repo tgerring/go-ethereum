@@ -32,6 +32,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/chain"
+	"github.com/ethereum/go-ethereum/chain/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethutil"
 	"github.com/ethereum/go-ethereum/logger"
@@ -62,6 +63,15 @@ func LoadExtension(path string) (uintptr, error) {
 
 	return ptr.Interface().(uintptr), nil
 }
+*/
+/*
+	vec, errr := LoadExtension("/Users/jeffrey/Desktop/build-libqmltest-Desktop_Qt_5_2_1_clang_64bit-Debug/liblibqmltest_debug.dylib")
+	fmt.Printf("Fetched vec with addr: %#x\n", vec)
+	if errr != nil {
+		fmt.Println(errr)
+	} else {
+		context.SetVar("vec", (unsafe.Pointer)(vec))
+	}
 */
 
 var guilogger = logger.NewLogger("GUI")
@@ -112,8 +122,9 @@ func NewWindow(ethereum *eth.Ethereum, config *ethutil.ConfigManager, clientIden
 }
 
 func (gui *Gui) Start(assetPath string) {
-
 	defer gui.txDb.Close()
+
+	guilogger.Infoln("Starting GUI")
 
 	// Register ethereum functions
 	qml.RegisterTypes("Ethereum", 1, 0, []qml.TypeSpec{{
@@ -131,16 +142,6 @@ func (gui *Gui) Start(assetPath string) {
 	// Expose the eth library and the ui library to QML
 	context.SetVar("gui", gui)
 	context.SetVar("eth", gui.uiLib)
-
-	/*
-		vec, errr := LoadExtension("/Users/jeffrey/Desktop/build-libqmltest-Desktop_Qt_5_2_1_clang_64bit-Debug/liblibqmltest_debug.dylib")
-		fmt.Printf("Fetched vec with addr: %#x\n", vec)
-		if errr != nil {
-			fmt.Println(errr)
-		} else {
-			context.SetVar("vec", (unsafe.Pointer)(vec))
-		}
-	*/
 
 	// Load the main QML interface
 	data, _ := ethutil.Config.Db.Get([]byte("KeyRing"))
@@ -160,7 +161,6 @@ func (gui *Gui) Start(assetPath string) {
 		panic(err)
 	}
 
-	guilogger.Infoln("Starting GUI")
 	gui.open = true
 	win.Show()
 
@@ -245,35 +245,18 @@ func (gui *Gui) CreateAndSetPrivKey() (string, string, string, string) {
 	return gui.eth.KeyManager().KeyPair().AsStrings()
 }
 
-func (gui *Gui) setInitialChainManager() {
+func (gui *Gui) setInitialChain(ancientBlocks bool) {
 	sBlk := gui.eth.ChainManager().LastBlockHash
 	blk := gui.eth.ChainManager().GetBlock(sBlk)
 	for ; blk != nil; blk = gui.eth.ChainManager().GetBlock(sBlk) {
 		sBlk = blk.PrevHash
-		addr := gui.address()
-
-		// Loop through all transactions to see if we missed any while being offline
-		for _, tx := range blk.Transactions() {
-			if bytes.Compare(tx.Sender(), addr) == 0 || bytes.Compare(tx.Recipient, addr) == 0 {
-				if ok, _ := gui.txDb.Get(tx.Hash()); ok == nil {
-					gui.txDb.Put(tx.Hash(), tx.RlpEncode())
-				}
-
-			}
-		}
 
 		gui.processBlock(blk, true)
 	}
 }
 
-type address struct {
-	Name, Address string
-}
-
 func (gui *Gui) loadAddressBook() {
 	view := gui.getObjectByName("infoView")
-	view.Call("clearAddress")
-
 	nameReg := gui.pipe.World().Config().Get("NameReg")
 	if nameReg != nil {
 		nameReg.EachStorage(func(name string, value *ethutil.Value) {
@@ -286,7 +269,29 @@ func (gui *Gui) loadAddressBook() {
 	}
 }
 
-func (gui *Gui) insertTransaction(window string, tx *chain.Transaction) {
+func (self *Gui) loadMergedMiningOptions() {
+	view := self.getObjectByName("mergedMiningModel")
+
+	nameReg := self.pipe.World().Config().Get("MergeMining")
+	if nameReg != nil {
+		i := 0
+		nameReg.EachStorage(func(name string, value *ethutil.Value) {
+			if name[0] != 0 {
+				value.Decode()
+
+				view.Call("addMergedMiningOption", struct {
+					Checked       bool
+					Name, Address string
+					Id, ItemId    int
+				}{false, name, ethutil.Bytes2Hex(value.Bytes()), 0, i})
+
+				i++
+			}
+		})
+	}
+}
+
+func (gui *Gui) insertTransaction(window string, tx *types.Transaction) {
 	pipe := xeth.New(gui.eth)
 	nameReg := pipe.World().Config().Get("NameReg")
 	addr := gui.address()
@@ -336,7 +341,7 @@ func (gui *Gui) insertTransaction(window string, tx *chain.Transaction) {
 func (gui *Gui) readPreviousTransactions() {
 	it := gui.txDb.NewIterator()
 	for it.Next() {
-		tx := chain.NewTransactionFromBytes(it.Value())
+		tx := types.NewTransactionFromBytes(it.Value())
 
 		gui.insertTransaction("post", tx)
 
@@ -344,7 +349,7 @@ func (gui *Gui) readPreviousTransactions() {
 	it.Release()
 }
 
-func (gui *Gui) processBlock(block *chain.Block, initial bool) {
+func (gui *Gui) processBlock(block *types.Block, initial bool) {
 	name := strings.Trim(gui.pipe.World().Config().Get("NameReg").Storage(block.Coinbase).Str(), "\x00")
 	b := xeth.NewJSBlock(block)
 	b.Name = name
@@ -376,14 +381,15 @@ func (self *Gui) getObjectByName(objectName string) qml.Object {
 func (gui *Gui) update() {
 	// We have to wait for qml to be done loading all the windows.
 	for !gui.qmlDone {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	}
 
 	go func() {
-		go gui.setInitialChainManager()
+		go gui.setInitialChain(false)
 		gui.loadAddressBook()
+		gui.loadMergedMiningOptions()
 		gui.setPeerInfo()
-		gui.readPreviousTransactions()
+		//gui.readPreviousTransactions()
 	}()
 
 	for _, plugin := range gui.plugins {
@@ -410,7 +416,6 @@ func (gui *Gui) update() {
 		chain.NewBlockEvent{},
 		chain.TxPreEvent{},
 		chain.TxPostEvent{},
-		miner.Event{},
 	)
 
 	// nameReg := gui.pipe.World().Config().Get("NameReg")
@@ -469,12 +474,14 @@ func (gui *Gui) update() {
 				case eth.PeerListEvent:
 					gui.setPeerInfo()
 
-				case miner.Event:
-					if ev.Type == miner.Started {
-						gui.miner = ev.Miner
-					} else {
-						gui.miner = nil
-					}
+					/*
+						case miner.Event:
+							if ev.Type == miner.Started {
+								gui.miner = ev.Miner
+							} else {
+								gui.miner = nil
+							}
+					*/
 				}
 
 			case <-peerUpdateTicker.C:
@@ -482,11 +489,7 @@ func (gui *Gui) update() {
 			case <-generalUpdateTicker.C:
 				statusText := "#" + gui.eth.ChainManager().CurrentBlock.Number.String()
 				lastBlockLabel.Set("text", statusText)
-
-				if gui.miner != nil {
-					pow := gui.miner.GetPow()
-					miningLabel.Set("text", "Mining @ "+strconv.FormatInt(pow.GetHashrate(), 10)+"Khash")
-				}
+				miningLabel.Set("text", "Mining @ "+strconv.FormatInt(gui.uiLib.miner.GetPow().GetHashrate(), 10)+"Khash")
 
 				blockLength := gui.eth.BlockPool().BlocksProcessed
 				chainLength := gui.eth.BlockPool().ChainLength
@@ -496,7 +499,6 @@ func (gui *Gui) update() {
 					dlWidget         = gui.win.Root().ObjectByName("downloadIndicator")
 					dlLabel          = gui.win.Root().ObjectByName("downloadLabel")
 				)
-
 				dlWidget.Set("value", pct)
 				dlLabel.Set("text", fmt.Sprintf("%d / %d", blockLength, chainLength))
 
@@ -512,7 +514,7 @@ func (gui *Gui) setStatsPane() {
 	runtime.ReadMemStats(&memStats)
 
 	statsPane := gui.getObjectByName("statsPane")
-	statsPane.Set("text", fmt.Sprintf(`###### Mist 0.6.8 (%s) #######
+	statsPane.Set("text", fmt.Sprintf(`###### Mist %s (%s) #######
 
 eth %d (p2p = %d)
 
@@ -525,7 +527,7 @@ Heap Alloc: %d
 
 CGNext:     %x
 NumGC:      %d
-`, runtime.Version(),
+`, Version, runtime.Version(),
 		eth.ProtocolVersion, eth.P2PVersion,
 		runtime.NumCPU, runtime.NumGoroutine(), runtime.NumCgoCall(),
 		memStats.Alloc, memStats.HeapAlloc,
@@ -535,7 +537,6 @@ NumGC:      %d
 
 func (gui *Gui) setPeerInfo() {
 	gui.win.Root().Call("setPeers", fmt.Sprintf("%d / %d", gui.eth.PeerCount(), gui.eth.MaxPeers))
-
 	gui.win.Root().Call("resetPeers")
 	for _, peer := range gui.pipe.Peers() {
 		gui.win.Root().Call("addPeer", peer)

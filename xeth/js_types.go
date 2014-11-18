@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/chain"
+	"github.com/ethereum/go-ethereum/chain/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethutil"
 	"github.com/ethereum/go-ethereum/state"
@@ -14,7 +15,7 @@ import (
 // Block interface exposed to QML
 type JSBlock struct {
 	//Transactions string `json:"transactions"`
-	ref          *chain.Block
+	ref          *types.Block
 	Size         string        `json:"size"`
 	Number       int           `json:"number"`
 	Hash         string        `json:"hash"`
@@ -26,10 +27,12 @@ type JSBlock struct {
 	GasLimit     string        `json:"gasLimit"`
 	GasUsed      string        `json:"gasUsed"`
 	PrevHash     string        `json:"prevHash"`
+	Bloom        string        `json:"bloom"`
+	Raw          string        `json:"raw"`
 }
 
 // Creates a new QML Block from a chain block
-func NewJSBlock(block *chain.Block) *JSBlock {
+func NewJSBlock(block *types.Block) *JSBlock {
 	if block == nil {
 		return &JSBlock{}
 	}
@@ -54,6 +57,8 @@ func NewJSBlock(block *chain.Block) *JSBlock {
 		Time:     block.Time,
 		Coinbase: ethutil.Bytes2Hex(block.Coinbase),
 		PrevHash: ethutil.Bytes2Hex(block.PrevHash),
+		Bloom:    ethutil.Bytes2Hex(block.LogsBloom),
+		Raw:      block.String(),
 	}
 }
 
@@ -75,7 +80,7 @@ func (self *JSBlock) GetTransaction(hash string) *JSTransaction {
 }
 
 type JSTransaction struct {
-	ref *chain.Transaction
+	ref *types.Transaction
 
 	Value           string `json:"value"`
 	Gas             string `json:"gas"`
@@ -90,7 +95,7 @@ type JSTransaction struct {
 	Confirmations   int    `json:"confirmations"`
 }
 
-func NewJSTx(tx *chain.Transaction, state *state.State) *JSTransaction {
+func NewJSTx(tx *types.Transaction, state *state.State) *JSTransaction {
 	hash := ethutil.Bytes2Hex(tx.Hash())
 	receiver := ethutil.Bytes2Hex(tx.Recipient)
 	if receiver == "0000000000000000000000000000000000000000" {

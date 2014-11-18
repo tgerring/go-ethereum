@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/ethutil"
+	"github.com/ethereum/go-ethereum/chain/types"
 	"github.com/ethereum/go-ethereum/state"
 	"github.com/ethereum/go-ethereum/vm"
 )
@@ -27,17 +27,17 @@ import (
  */
 type StateTransition struct {
 	coinbase, receiver []byte
-	tx                 *Transaction
+	tx                 *types.Transaction
 	gas, gasPrice      *big.Int
 	value              *big.Int
 	data               []byte
 	state              *state.State
-	block              *Block
+	block              *types.Block
 
 	cb, rec, sen *state.StateObject
 }
 
-func NewStateTransition(coinbase *state.StateObject, tx *Transaction, state *state.State, block *Block) *StateTransition {
+func NewStateTransition(coinbase *state.StateObject, tx *types.Transaction, state *state.State, block *types.Block) *StateTransition {
 	return &StateTransition{coinbase.Address(), tx.Recipient, tx, new(big.Int), new(big.Int).Set(tx.GasPrice), tx.Value, tx.Data, state, block, coinbase, nil, nil}
 }
 
@@ -204,7 +204,7 @@ func (self *StateTransition) TransitionState() (err error) {
 	})
 
 	// Process the init code and create 'valid' contract
-	if IsContractAddr(self.receiver) {
+	if types.IsContractAddr(self.receiver) {
 		// Evaluate the initialization script
 		// and use the return value as the
 		// script section for the state object.
@@ -229,12 +229,37 @@ func (self *StateTransition) TransitionState() (err error) {
 			}
 
 			msg.Output = ret
-		} else {
-			// Add default LOG. Default = big(sender.addr) + 1
-			addr := ethutil.BigD(receiver.Address())
-			self.state.AddLog(state.Log{sender.Address(), [][]byte{ethutil.U256(addr.Add(addr, ethutil.Big1)).Bytes()}, nil})
 		}
 	}
+
+	/*
+	* XXX The following _should_ replace the above transaction
+	* execution (also for regular calls. Will replace / test next
+	* phase
+	 */
+	/*
+		// Execute transaction
+		if tx.CreatesContract() {
+			self.rec = MakeContract(tx, self.state)
+		}
+
+		address := self.Receiver().Address()
+		evm := vm.New(NewEnv(state, self.tx, self.block), vm.DebugVmTy)
+		exe := NewExecution(evm, address, self.tx.Data, self.gas, self.gas.Price, self.tx.Value)
+		ret, err := msg.Exec(address, self.Sender())
+		if err != nil {
+			statelogger.Debugln(err)
+		} else {
+			if tx.CreatesContract() {
+				self.Receiver().Code = ret
+			}
+			msg.Output = ret
+		}
+	*/
+
+	// Add default LOG. Default = big(sender.addr) + 1
+	//addr := ethutil.BigD(receiver.Address())
+	//self.state.AddLog(&state.Log{ethutil.U256(addr.Add(addr, ethutil.Big1)).Bytes(), [][]byte{sender.Address()}, nil})
 
 	return
 }
@@ -248,13 +273,15 @@ func (self *StateTransition) Eval(msg *state.Message, script []byte, context *st
 	)
 
 	evm := vm.New(env, vm.DebugVmTy)
+	// TMP this will change in the refactor
+	callerClosure.SetExecution(vm.NewExecution(evm, nil, nil, nil, nil, self.tx.Value))
 	ret, _, err = callerClosure.Call(evm, self.tx.Data)
 
 	return
 }
 
 // Converts an transaction in to a state object
-func MakeContract(tx *Transaction, state *state.State) *state.StateObject {
+func MakeContract(tx *types.Transaction, state *state.State) *state.StateObject {
 	addr := tx.CreationAddress(state)
 
 	contract := state.GetOrNewStateObject(addr)

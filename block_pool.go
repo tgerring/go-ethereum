@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/chain"
+	"github.com/ethereum/go-ethereum/chain/types"
 	"github.com/ethereum/go-ethereum/ethutil"
 	"github.com/ethereum/go-ethereum/logger"
+	"github.com/ethereum/go-ethereum/state"
 	"github.com/ethereum/go-ethereum/wire"
 )
 
@@ -20,7 +22,7 @@ var poollogger = logger.NewLogger("BPOOL")
 type block struct {
 	from      *Peer
 	peer      *Peer
-	block     *chain.Block
+	block     *types.Block
 	reqAt     time.Time
 	requested int
 }
@@ -73,7 +75,7 @@ func (self *BlockPool) HasCommonHash(hash []byte) bool {
 	return self.eth.ChainManager().GetBlock(hash) != nil
 }
 
-func (self *BlockPool) Blocks() (blocks chain.Blocks) {
+func (self *BlockPool) Blocks() (blocks types.Blocks) {
 	for _, item := range self.pool {
 		if item.block != nil {
 			blocks = append(blocks, item.block)
@@ -123,15 +125,15 @@ func (self *BlockPool) AddHash(hash []byte, peer *Peer) {
 	}
 }
 
-func (self *BlockPool) Add(b *chain.Block, peer *Peer) {
+func (self *BlockPool) Add(b *types.Block, peer *Peer) {
 	self.addBlock(b, peer, false)
 }
 
-func (self *BlockPool) AddNew(b *chain.Block, peer *Peer) {
+func (self *BlockPool) AddNew(b *types.Block, peer *Peer) {
 	self.addBlock(b, peer, true)
 }
 
-func (self *BlockPool) addBlock(b *chain.Block, peer *Peer, newBlock bool) {
+func (self *BlockPool) addBlock(b *types.Block, peer *Peer, newBlock bool) {
 	self.mut.Lock()
 	defer self.mut.Unlock()
 
@@ -200,7 +202,7 @@ func (self *BlockPool) DistributeHashes() {
 			} else if lastFetchFailed || item.peer == nil {
 				// Find a suitable, available peer
 				eachPeer(self.eth.peers, func(p *Peer, v *list.Element) {
-					if peer == nil && len(dist[p]) < amount/peerLen {
+					if peer == nil && len(dist[p]) < amount/peerLen && p.statusKnown {
 						peer = p
 					}
 				})
@@ -283,7 +285,7 @@ out:
 			break out
 		case <-procTimer.C:
 			blocks := self.Blocks()
-			chain.BlockBy(chain.Number).Sort(blocks)
+			types.BlockBy(types.Number).Sort(blocks)
 
 			// Find common block
 			for i, block := range blocks {
@@ -309,35 +311,36 @@ out:
 				}
 			}
 
-			// TODO figure out whether we were catching up
-			// If caught up and just a new block has been propagated:
-			// sm.eth.EventMux().Post(NewBlockEvent{block})
-			// otherwise process and don't emit anything
-			var err error
-			for i, block := range blocks {
-				err = self.eth.BlockManager().Process(block)
-				if err != nil {
-					poollogger.Infoln(err)
-					poollogger.Debugf("Block #%v failed (%x...)\n", block.Number, block.Hash()[0:4])
-					poollogger.Debugln(block)
+			if len(blocks) > 0 {
+				chainManager := self.eth.ChainManager()
+				// Test and import
+				bchain := chain.NewChain(blocks)
+				_, err := chainManager.TestChain(bchain)
+				if err != nil && !chain.IsTDError(err) {
+					poollogger.Debugln(err)
 
-					blocks = blocks[i:]
+					self.Reset()
 
-					break
+					if self.peer != nil && self.peer.conn != nil {
+						poollogger.Debugf("Punishing peer for supplying bad chain (%v)\n", self.peer.conn.RemoteAddr())
+					}
+
+					// This peer gave us bad hashes and made us fetch a bad chain, therefor he shall be punished.
+					self.eth.BlacklistPeer(self.peer)
+					self.peer.StopWithReason(DiscBadPeer)
+					self.td = ethutil.Big0
+					self.peer = nil
+				} else {
+					if !chain.IsTDError(err) {
+						chainManager.InsertChain(bchain, func(block *types.Block, messages state.Messages) {
+							self.eth.EventMux().Post(chain.NewBlockEvent{block})
+							self.eth.EventMux().Post(messages)
+
+							self.Remove(block.Hash())
+						})
+
+					}
 				}
-
-				self.Remove(block.Hash())
-			}
-
-			if err != nil {
-				self.Reset()
-
-				poollogger.Debugf("Punishing peer for supplying bad chain (%v)\n", self.peer.conn.RemoteAddr())
-				// This peer gave us bad hashes and made us fetch a bad chain, therefor he shall be punished.
-				self.eth.BlacklistPeer(self.peer)
-				self.peer.StopWithReason(DiscBadPeer)
-				self.td = ethutil.Big0
-				self.peer = nil
 			}
 		}
 	}

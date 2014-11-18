@@ -37,7 +37,7 @@ func (self *State) EmptyLogs() {
 	self.logs = nil
 }
 
-func (self *State) AddLog(log Log) {
+func (self *State) AddLog(log *Log) {
 	self.logs = append(self.logs, log)
 }
 
@@ -62,7 +62,7 @@ func (self *State) Refund(addr []byte, gas, price *big.Int) {
 		self.refund[string(addr)] = new(big.Int)
 	}
 
-	self.refund[string(addr)] = new(big.Int).Add(self.refund[string(addr)], amount)
+	self.refund[string(addr)].Add(self.refund[string(addr)], amount)
 }
 
 func (self *State) AddBalance(addr []byte, amount *big.Int) {
@@ -237,8 +237,8 @@ func (self *State) Set(state *State) {
 	self.logs = state.logs
 }
 
-func (s *State) Root() interface{} {
-	return s.Trie.Root
+func (s *State) Root() []byte {
+	return s.Trie.GetRoot()
 }
 
 // Resets the trie and all siblings
@@ -302,7 +302,7 @@ func (self *State) Update() {
 	if deleted {
 		valid, t2 := trie.ParanoiaCheck(self.Trie)
 		if !valid {
-			statelogger.Infof("Warn: PARANOIA: Different state root during copy %x vs %x\n", self.Trie.Root, t2.Root)
+			statelogger.Infof("Warn: PARANOIA: Different state root during copy %x vs %x\n", self.Trie.GetRoot(), t2.GetRoot())
 
 			self.Trie = t2
 		}

@@ -129,8 +129,9 @@ func New(db ethutil.Database, clientIdentity wire.ClientIdentity, keyManager *cr
 
 	ethereum.blockPool = NewBlockPool(ethereum)
 	ethereum.txPool = chain.NewTxPool(ethereum)
-	ethereum.blockChain = chain.NewChainManager(ethereum)
+	ethereum.blockChain = chain.NewChainManager()
 	ethereum.blockManager = chain.NewBlockManager(ethereum)
+	ethereum.blockChain.SetProcessor(ethereum.blockManager)
 
 	// Start the tx pool
 	ethereum.txPool.Start()
@@ -233,7 +234,7 @@ func (s *Ethereum) ConnectToPeer(addr string) error {
 	if s.peers.Len() < s.MaxPeers {
 		var alreadyConnected bool
 
-		ahost, _, _ := net.SplitHostPort(addr)
+		ahost, aport, _ := net.SplitHostPort(addr)
 		var chost string
 
 		ips, err := net.LookupIP(ahost)
@@ -273,9 +274,9 @@ func (s *Ethereum) ConnectToPeer(addr string) error {
 			if p.conn == nil {
 				return
 			}
-			phost, _, _ := net.SplitHostPort(p.conn.RemoteAddr().String())
+			phost, pport, _ := net.SplitHostPort(p.conn.RemoteAddr().String())
 
-			if phost == chost {
+			if phost == chost && pport == aport {
 				alreadyConnected = true
 				//loggerger.Debugf("Peer %s already added.\n", chost)
 				return
@@ -419,6 +420,7 @@ func (s *Ethereum) Start(seed bool) {
 	if seed {
 		s.Seed()
 	}
+	s.ConnectToPeer("localhost:40404")
 	loggerger.Infoln("Server started")
 }
 
@@ -471,7 +473,6 @@ func (s *Ethereum) Seed() {
 			s.ProcessPeerList(peers)
 		}
 
-		// XXX tmp
 		s.ConnectToPeer(seedNodeAddress)
 	}
 }
