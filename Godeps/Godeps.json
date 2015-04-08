@@ -43,10 +43,6 @@
 			"Rev": "ccfcd0245381f0c94c68f50626665eed3c6b726a"
 		},
 		{
-			"ImportPath": "github.com/robertkrimen/otto",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
 			"ImportPath": "github.com/obscuren/qml",
 			"Rev": "c288002b52e905973b131089a8a7c761d4a2c36a"
 		},
@@ -63,27 +59,7 @@
 			"Rev": "907cca0f578a5316fb864ec6992dc3d9730ec58c"
 		},
 		{
-			"ImportPath": "github.com/robertkrimen/otto/ast",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
-			"ImportPath": "github.com/robertkrimen/otto/dbg",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
-			"ImportPath": "github.com/robertkrimen/otto/file",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
-			"ImportPath": "github.com/robertkrimen/otto/parser",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
-			"ImportPath": "github.com/robertkrimen/otto/registry",
-			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
-		},
-		{
-			"ImportPath": "github.com/robertkrimen/otto/token",
+			"ImportPath": "github.com/robertkrimen/otto",
 			"Rev": "dea31a3d392779af358ec41f77a07fcc7e9d04ba"
 		},
 		{
