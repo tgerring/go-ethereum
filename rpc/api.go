@@ -194,8 +194,6 @@ func (api *EthereumApi) GetRequestReply(req *RpcRequest, reply *interface{}) err
 		} else {
 			*reply = newHexData(common.FromHex(v))
 		}
-	case "eth_flush":
-		return NewNotImplementedError(req.Method)
 	case "eth_getBlockByHash":
 		args := new(GetBlockByHashArgs)
 		if err := json.Unmarshal(req.Params, &args); err != nil {
