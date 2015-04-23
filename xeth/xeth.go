@@ -48,8 +48,8 @@ type XEth struct {
 	messagesMut sync.RWMutex
 	messages    map[int]*whisperFilter
 
-	// regmut   sync.Mutex
-	// register map[string][]*interface{} // TODO improve return type
+	regmut   sync.Mutex
+	register map[string][]*interface{} // TODO improve return type
 
 	agent *miner.RemoteAgent
 }
@@ -480,27 +480,27 @@ func (self *XEth) MessagesChanged(id int) []WhisperMessage {
 	return nil
 }
 
-// func (self *XEth) Register(args string) bool {
-// 	self.regmut.Lock()
-// 	defer self.regmut.Unlock()
+func (self *XEth) Register(args string) bool {
+	self.regmut.Lock()
+	defer self.regmut.Unlock()
 
-// 	if _, ok := self.register[args]; ok {
-// 		self.register[args] = nil // register with empty
-// 	}
-// 	return true
-// }
+	if _, ok := self.register[args]; ok {
+		self.register[args] = nil // register with empty
+	}
+	return true
+}
 
-// func (self *XEth) Unregister(args string) bool {
-// 	self.regmut.Lock()
-// 	defer self.regmut.Unlock()
+func (self *XEth) Unregister(args string) bool {
+	self.regmut.Lock()
+	defer self.regmut.Unlock()
 
-// 	if _, ok := self.register[args]; ok {
-// 		delete(self.register, args)
-// 		return true
-// 	}
+	if _, ok := self.register[args]; ok {
+		delete(self.register, args)
+		return true
+	}
 
-// 	return false
-// }
+	return false
+}
 
 // // TODO improve return type
 // func (self *XEth) PullWatchTx(args string) []*interface{} {

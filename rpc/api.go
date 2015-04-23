@@ -463,20 +463,18 @@ func (api *EthereumApi) GetRequestReply(req *RpcRequest, reply *interface{}) err
 			return err
 		}
 		*reply = api.xeth().Whisper().Messages(args.Id)
-
-	// case "eth_register":
-	// 	// Placeholder for actual type
-	// 	args := new(HashIndexArgs)
-	// 	if err := json.Unmarshal(req.Params, &args); err != nil {
-	// 		return err
-	// 	}
-	// 	*reply = api.xeth().Register(args.Hash)
-	// case "eth_unregister":
-	// 	args := new(HashIndexArgs)
-	// 	if err := json.Unmarshal(req.Params, &args); err != nil {
-	// 		return err
-	// 	}
-	// 	*reply = api.xeth().Unregister(args.Hash)
+	case "eth_register":
+		args := new(HashArgs)
+		if err := json.Unmarshal(req.Params, &args); err != nil {
+			return err
+		}
+		*reply = api.xeth().Register(args.Hash)
+	case "eth_unregister":
+		args := new(HashArgs)
+		if err := json.Unmarshal(req.Params, &args); err != nil {
+			return err
+		}
+		*reply = api.xeth().Unregister(args.Hash)
 	// case "eth_watchTx":
 	// 	args := new(HashIndexArgs)
 	// 	if err := json.Unmarshal(req.Params, &args); err != nil {
