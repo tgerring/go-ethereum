@@ -187,7 +187,12 @@ func (api *EthereumApi) GetRequestReply(req *RpcRequest, reply *interface{}) err
 		}
 		*reply = v
 	case "eth_estimateGas":
-		_, gas, err := api.doCall(req.Params)
+		args := new(EstimateGasArgs)
+		if err := json.Unmarshal(req.Params, &args); err != nil {
+			return err
+		}
+
+		_, gas, err := api.xeth().Call(args.From, args.To, args.Value.String(), args.Gas.String(), args.GasPrice.String(), args.Data)
 		if err != nil {
 			return err
 		}
@@ -199,7 +204,12 @@ func (api *EthereumApi) GetRequestReply(req *RpcRequest, reply *interface{}) err
 			*reply = newHexNum(gas)
 		}
 	case "eth_call":
-		v, _, err := api.doCall(req.Params)
+		args := new(CallArgs)
+		if err := json.Unmarshal(req.Params, &args); err != nil {
+			return err
+		}
+
+		v, _, err := api.xethAtStateNum(args.BlockNumber).Call(args.From, args.To, args.Value.String(), args.Gas.String(), args.GasPrice.String(), args.Data)
 		if err != nil {
 			return err
 		}
@@ -589,13 +599,4 @@ func (api *EthereumApi) GetRequestReply(req *RpcRequest, reply *interface{}) err
 
 	// glog.V(logger.Detail).Infof("Reply: %v\n", reply)
 	return nil
-}
-
-func (api *EthereumApi) doCall(params json.RawMessage) (string, string, error) {
-	args := new(CallArgs)
-	if err := json.Unmarshal(params, &args); err != nil {
-		return "", "", err
-	}
-
-	return api.xethAtStateNum(args.BlockNumber).Call(args.From, args.To, args.Value.String(), args.Gas.String(), args.GasPrice.String(), args.Data)
 }
