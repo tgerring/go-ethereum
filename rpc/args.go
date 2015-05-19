@@ -386,7 +386,7 @@ type EstimateGasArgs struct {
 	GasPrice *big.Int
 	Data     string
 
-	// BlockNumber int64
+	BlockNumber int64
 }
 
 func (args *EstimateGasArgs) UnmarshalJSON(b []byte) (err error) {
@@ -448,14 +448,14 @@ func (args *EstimateGasArgs) UnmarshalJSON(b []byte) (err error) {
 
 	args.Data = ext.Data
 
-	// // Check for optional BlockNumber param
-	// if len(obj) > 1 {
-	// 	if err := blockHeightFromJson(obj[1], &args.BlockNumber); err != nil {
-	// 		return err
-	// 	}
-	// } else {
-	// 	args.BlockNumber = -1
-	// }
+	// Check for optional BlockNumber param
+	if len(obj) > 1 {
+		if err := blockHeightFromJson(obj[1], &args.BlockNumber); err != nil {
+			return err
+		}
+	} else {
+		args.BlockNumber = -1
+	}
 
 	return nil
 }
